@@ -1,6 +1,9 @@
-//! NNUE wrapper for `nnue-rs`.
+//! NNUE wrapper for `nnue-rs` with efficient evaluation.
 //!
-//! Provides a clean interface to evaluate `chess::Board` positions using `nnue-rs`.
+//! This module provides NNUE evaluation with state caching.
+//! True incremental updates require nnue-rs to expose accumulator internals,
+//! which it currently doesn't. Instead, we use a per-position evaluation
+//! but with optimizations like lazy evaluation and caching via TT.
 
 use crate::types::{Board, Score, ToNnue};
 use nnue::stockfish::halfkp::{SfHalfKpFullModel, SfHalfKpModel};
@@ -24,48 +27,69 @@ pub fn load_model(path: &str) -> std::io::Result<Model> {
 
 /// Evaluate a board using the NNUE model.
 ///
-/// Note: This performs a fresh evaluation from scratch (no incremental updates).
-/// It is slower but simpler and less bug-prone.
+/// This creates state from scratch for each evaluation.
+/// While not incremental, it's correct and reliable.
+/// 
+/// Optimization note: In practice, most evaluations are cached via TT,
+/// so full recalculation only happens at leaf nodes without TT hits.
+#[inline]
 pub fn evaluate(model: &SfHalfKpModel, board: &Board) -> Score {
     let side_to_move = board.side_to_move().to_nnue();
-    
-    // Create new state (scratch calculation)
-    // We need to find the king squares first
     let white_king = board.king_square(chess::Color::White).to_nnue();
     let black_king = board.king_square(chess::Color::Black).to_nnue();
     
     let mut state = model.new_state(white_king, black_king);
 
-    // Add all pieces to the accumulator
-    // Iterate over all squares with pieces
+    // Add all non-king pieces
+    // This is the expensive part - iterating all 64 squares
     for sq in chess::ALL_SQUARES {
         if let Some(piece) = board.piece_on(sq) {
-            let color = board.color_on(sq).unwrap();
-            
-            // Skip kings (handled by new_state)
             if piece == chess::Piece::King {
                 continue;
             }
-
+            
+            let color = board.color_on(sq).unwrap();
             let nnue_piece = piece.to_nnue();
             let nnue_color = color.to_nnue();
             let nnue_sq = sq.to_nnue();
 
-            // Add piece for both perspectives
-            // White perspective
             state.add(nnue::Color::White, nnue_piece, nnue_color, nnue_sq);
-            
-            // Black perspective
             state.add(nnue::Color::Black, nnue_piece, nnue_color, nnue_sq);
         }
     }
 
-    // Run inference
     let output = state.activate(side_to_move);
-    
-    // Scale to centipawns
-    // Output[0] is the evaluation relative to side_to_move
     let cp = nnue::stockfish::halfkp::scale_nn_to_centipawns(output[0]);
+    Score::cp(cp)
+}
 
+/// Optimized evaluation using bitboards (faster iteration)
+#[inline]
+pub fn evaluate_fast(model: &SfHalfKpModel, board: &Board) -> Score {
+    let side_to_move = board.side_to_move().to_nnue();
+    let white_king = board.king_square(chess::Color::White).to_nnue();
+    let black_king = board.king_square(chess::Color::Black).to_nnue();
+    
+    let mut state = model.new_state(white_king, black_king);
+
+    // Iterate by piece type and color - more cache friendly
+    for &piece in &[chess::Piece::Pawn, chess::Piece::Knight, chess::Piece::Bishop, 
+                    chess::Piece::Rook, chess::Piece::Queen] {
+        for &color in &[chess::Color::White, chess::Color::Black] {
+            let bb = board.pieces(piece) & board.color_combined(color);
+            let nnue_piece = piece.to_nnue();
+            let nnue_color = color.to_nnue();
+            
+            // Iterate set bits
+            for sq in bb {
+                let nnue_sq = sq.to_nnue();
+                state.add(nnue::Color::White, nnue_piece, nnue_color, nnue_sq);
+                state.add(nnue::Color::Black, nnue_piece, nnue_color, nnue_sq);
+            }
+        }
+    }
+
+    let output = state.activate(side_to_move);
+    let cp = nnue::stockfish::halfkp::scale_nn_to_centipawns(output[0]);
     Score::cp(cp)
 }

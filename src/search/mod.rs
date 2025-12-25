@@ -22,11 +22,13 @@ mod ordering;
 mod limits;
 pub mod tt;
 mod killers;
+mod history;
 
 pub use limits::{SearchLimits, TimeManager};
 pub use negamax::SearchResult;
 pub use tt::TranspositionTable;
 pub use killers::KillerTable;
+pub use history::HistoryTable;
 
 use crate::types::{Board, Move, Score, Depth, Ply, NodeCount};
 use crate::eval::nnue;
@@ -60,6 +62,8 @@ pub struct Searcher {
     pub tt: TranspositionTable,
     /// Killer moves table
     pub killers: KillerTable,
+    /// History heuristic table
+    pub history: HistoryTable,
     /// Time manager for search limits
     time_manager: TimeManager,
     /// Search statistics
@@ -82,6 +86,7 @@ impl Searcher {
             board: Board::default(),
             tt: TranspositionTable::default(),
             killers: KillerTable::new(),
+            history: HistoryTable::new(),
             time_manager: TimeManager::new(),
             stats: SearchStats::default(),
             best_move: None,
@@ -161,6 +166,9 @@ impl Searcher {
         
         // Clear killer moves for new search
         self.killers.clear();
+        
+        // Age history scores (decay old data, keep some history)
+        self.history.age();
         
         // Configure time management
         self.time_manager = TimeManager::from_limits(&limits, self.board.side_to_move());

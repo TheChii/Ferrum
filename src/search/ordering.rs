@@ -5,9 +5,12 @@
 //! - Transposition table moves (best first)
 //! - Captures via MVV-LVA
 //! - Killer moves (quiet moves that caused cutoffs)
+//! - History heuristic (success rate of quiet moves)
 //! - Promotion bonuses
 
-use crate::types::{Board, Move, Ply, piece_value};
+use crate::types::{Board, Move, piece_value};
+use super::history::HistoryTable;
+use chess::Color;
 
 /// Move score constants
 const TT_MOVE_BONUS: i32 = 1_000_000;
@@ -35,6 +38,8 @@ fn score_move(
     m: Move, 
     tt_move: Option<Move>,
     killers: [Option<Move>; 2],
+    history: &HistoryTable,
+    color: Color,
 ) -> i32 {
     // TT move is always searched first
     if tt_move == Some(m) {
@@ -52,26 +57,31 @@ fn score_move(
     if board.piece_on(m.get_dest()).is_some() {
         score += mvv_lva_score(board, m) + CAPTURE_BONUS;
     } else {
-        // Quiet move - check killers
+        // Quiet move - check killers first
         if killers[0] == Some(m) {
             score += KILLER_0_BONUS;
         } else if killers[1] == Some(m) {
             score += KILLER_1_BONUS;
+        } else {
+            // Use history score for other quiet moves
+            score += history.get(color, m);
         }
     }
 
     score
 }
 
-/// Order moves for main search with TT move and killers priority
-pub fn order_moves_with_tt_and_killers(
+/// Order moves for main search with TT, killers, and history
+pub fn order_moves_full(
     board: &Board, 
     moves: &mut [Move], 
     tt_move: Option<Move>,
     killers: [Option<Move>; 2],
+    history: &HistoryTable,
+    color: Color,
 ) {
     let mut scored: Vec<(Move, i32)> = moves.iter()
-        .map(|&m| (m, score_move(board, m, tt_move, killers)))
+        .map(|&m| (m, score_move(board, m, tt_move, killers, history, color)))
         .collect();
 
     scored.sort_by(|a, b| b.1.cmp(&a.1));
@@ -81,7 +91,19 @@ pub fn order_moves_with_tt_and_killers(
     }
 }
 
+/// Order moves for main search with TT and killers (no history)
+pub fn order_moves_with_tt_and_killers(
+    board: &Board, 
+    moves: &mut [Move], 
+    tt_move: Option<Move>,
+    killers: [Option<Move>; 2],
+) {
+    let dummy_history = HistoryTable::new();
+    order_moves_full(board, moves, tt_move, killers, &dummy_history, Color::White);
+}
+
 /// Order moves for main search with TT move only (no killers)
+#[allow(dead_code)]
 pub fn order_moves_with_tt(board: &Board, moves: &mut [Move], tt_move: Option<Move>) {
     order_moves_with_tt_and_killers(board, moves, tt_move, [None, None]);
 }

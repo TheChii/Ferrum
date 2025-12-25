@@ -159,31 +159,76 @@ pub fn search(
 
     // Get killers for this ply
     let killers = searcher.killers.get(ply);
+    let color = board.side_to_move();
 
-    // Order moves (TT move and killers will be searched first)
-    ordering::order_moves_with_tt_and_killers(board, &mut moves, tt_move, killers);
+    // Order moves (TT, killers, and history)
+    ordering::order_moves_full(board, &mut moves, tt_move, killers, &searcher.history, color);
 
     let mut best_move = None;
     let mut best_score = Score::neg_infinity();
     let mut pv = Vec::new();
+    let mut searched_quiets: Vec<Move> = Vec::new();
 
-    for &m in moves.iter() {
+    for (move_idx, &m) in moves.iter().enumerate() {
         let new_board = board.make_move_new(m);
 
         // Prefetch TT entry for next position
         searcher.tt.prefetch(new_board.get_hash());
 
-        let result = search(
+        // Determine if this is a quiet move (for LMR)
+        let is_capture = board.piece_on(m.get_dest()).is_some();
+        let is_promotion = m.get_promotion().is_some();
+        let is_killer = killers[0] == Some(m) || killers[1] == Some(m);
+        let is_quiet = !is_capture && !is_promotion;
+        let gives_check = new_board.checkers().popcnt() > 0;
+
+        // LMR: Late Move Reductions
+        // Reduce depth for late quiet moves that aren't special
+        let mut reduced = false;
+        let search_depth = if move_idx >= 4 
+            && depth.raw() >= 3 
+            && is_quiet 
+            && !in_check 
+            && !gives_check
+            && !is_killer
+        {
+            // Logarithmic reduction formula
+            let d = (depth.raw() as f32).ln();
+            let m_idx = ((move_idx + 1) as f32).ln();
+            let reduction = ((d * m_idx) / 2.5) as i32;
+            let reduction = reduction.min(depth.raw() - 2).max(1);
+            reduced = true;
+            Depth::new((depth.raw() - 1 - reduction).max(1))
+        } else {
+            depth - 1
+        };
+
+        // Search with potentially reduced depth
+        let mut result = search(
             searcher,
             &new_board,
-            depth - 1,
+            search_depth,
             ply.next(),
             -beta,
             -alpha,
-            true,  // Allow null move in recursive search
+            true,
         );
 
-        let score = -result.score;
+        let mut score = -result.score;
+
+        // Re-search at full depth if reduced search beats alpha
+        if reduced && score > alpha && !searcher.should_stop() {
+            result = search(
+                searcher,
+                &new_board,
+                depth - 1,
+                ply.next(),
+                -beta,
+                -alpha,
+                true,
+            );
+            score = -result.score;
+        }
 
         if searcher.should_stop() {
             break;
@@ -201,13 +246,20 @@ pub fn search(
                 alpha = score;
 
                 if score >= beta {
-                    // Beta cutoff - store killer if quiet move
-                    if board.piece_on(m.get_dest()).is_none() && m.get_promotion().is_none() {
+                    // Beta cutoff - update killer and history for quiet moves
+                    if is_quiet {
                         searcher.killers.store(ply, m);
+                        // Update history: bonus for cutoff move, penalty for searched quiets
+                        searcher.history.update_on_cutoff(color, m, depth.raw(), &searched_quiets);
                     }
                     break;
                 }
             }
+        }
+        
+        // Track searched quiet moves for history penalty
+        if is_quiet {
+            searched_quiets.push(m);
         }
     }
 

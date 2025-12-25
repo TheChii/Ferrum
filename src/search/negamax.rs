@@ -185,6 +185,10 @@ pub fn search(
         // LMR: Late Move Reductions
         // Reduce depth for late quiet moves that aren't special
         let mut reduced = false;
+        
+        // Check extension: extend +1 when in check to avoid horizon effect
+        let extension = if in_check { 1 } else { 0 };
+        
         let search_depth = if move_idx >= 4 
             && depth.raw() >= 3 
             && is_quiet 
@@ -198,9 +202,9 @@ pub fn search(
             let reduction = ((d * m_idx) / 2.5) as i32;
             let reduction = reduction.min(depth.raw() - 2).max(1);
             reduced = true;
-            Depth::new((depth.raw() - 1 - reduction).max(1))
+            Depth::new((depth.raw() - 1 - reduction + extension).max(1))
         } else {
-            depth - 1
+            Depth::new((depth.raw() - 1 + extension).max(0))
         };
 
         // Search with potentially reduced depth

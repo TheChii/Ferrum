@@ -175,30 +175,67 @@ impl Searcher {
         
         let max_depth = limits.depth.unwrap_or(Depth::MAX);
         
-        // Iterative deepening
+        // Iterative deepening with aspiration windows
         let mut best_score = Score::neg_infinity();
+        const INITIAL_WINDOW: i32 = 25;
         
         for depth in 1..=max_depth.raw() {
             if self.should_stop() {
                 break;
             }
 
-            let result = negamax::search(
-                self,
-                &self.board.clone(),
-                Depth::new(depth),
-                Ply::ZERO,
-                Score::neg_infinity(),
-                Score::infinity(),
-                true,  // Allow null move at root
-            );
+            // Aspiration window: use previous score +/- delta after depth 1
+            let mut delta = INITIAL_WINDOW;
+            let mut alpha = if depth > 1 && !best_score.is_mate() { 
+                best_score - Score::cp(delta) 
+            } else { 
+                Score::neg_infinity() 
+            };
+            let mut beta = if depth > 1 && !best_score.is_mate() { 
+                best_score + Score::cp(delta) 
+            } else { 
+                Score::infinity() 
+            };
 
-            // Only update best move if search completed this depth
-            if !self.should_stop() || self.best_move.is_none() {
-                if let Some(m) = result.best_move {
-                    self.best_move = Some(m);
-                    best_score = result.score;
-                    self.pv = result.pv.clone();
+            // Aspiration loop: widen window on fail-high/low
+            loop {
+                let result = negamax::search(
+                    self,
+                    &self.board.clone(),
+                    Depth::new(depth),
+                    Ply::ZERO,
+                    alpha,
+                    beta,
+                    true,
+                );
+
+                if self.should_stop() {
+                    break;
+                }
+
+                // Check if score is within window
+                if result.score <= alpha {
+                    // Fail-low: widen alpha
+                    alpha = Score::neg_infinity();
+                } else if result.score >= beta {
+                    // Fail-high: widen beta
+                    beta = Score::infinity();
+                } else {
+                    // Score within window, accept result
+                    if let Some(m) = result.best_move {
+                        self.best_move = Some(m);
+                        best_score = result.score;
+                        self.pv = result.pv.clone();
+                    }
+                    break;
+                }
+
+                // Widen window for next attempt
+                delta *= 2;
+                if delta > 500 {
+                    // Window too wide, use full window
+                    alpha = Score::neg_infinity();
+                    beta = Score::infinity();
                 }
             }
 

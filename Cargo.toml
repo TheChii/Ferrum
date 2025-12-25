@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 chess = "3"
-nnue = { git = "https://github.com/analog-hors/nnue-rs" }
+nnue = { path = "nnue-rs" }
 binread = "2"

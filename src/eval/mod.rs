@@ -12,8 +12,8 @@ pub mod nnue;
 /// Uses NNUE if a model is provided, otherwise simple material fallback.
 pub fn evaluate(board: &Board, model: Option<&nnue::Model>) -> Score {
     if let Some(m) = model {
-        // Use optimized NNUE evaluation
-        nnue::evaluate_fast(&m.model, board)
+        // Use NNUE evaluation
+        nnue::evaluate_scratch(&m.model, board)
     } else {
         // Fallback to simple material
         material_eval_wrapper(board)

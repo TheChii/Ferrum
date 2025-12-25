@@ -172,7 +172,6 @@ dependencies = [
 [[package]]
 name = "nnue"
 version = "0.1.0"
-source = "git+https://github.com/analog-hors/nnue-rs#004eb4dd05cfd8e6e3d39426f6e39a64878cfd22"
 dependencies = [
  "binread",
  "bytemuck",

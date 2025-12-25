@@ -207,25 +207,70 @@ pub fn search(
             Depth::new((depth.raw() - 1 + extension).max(0))
         };
 
-        // Search with potentially reduced depth
-        let mut result = search(
-            searcher,
-            &new_board,
-            search_depth,
-            ply.next(),
-            -beta,
-            -alpha,
-            true,
-        );
+        // === Futility Pruning ===
+        // At shallow depths, skip quiet moves if eval + margin is below alpha
+        if depth.raw() <= 3 && !in_check && is_quiet && !gives_check && move_idx > 0 {
+            let margin = 100 * depth.raw();
+            let static_eval = eval::evaluate(board, searcher.nnue.as_ref());
+            if static_eval.raw() + margin < alpha.raw() {
+                // Track for history
+                if is_quiet {
+                    searched_quiets.push(m);
+                }
+                continue;  // Prune this move
+            }
+        }
 
-        let mut score = -result.score;
+        // === Principal Variation Search (PVS) ===
+        let mut result;
+        let mut score;
+        
+        if move_idx == 0 {
+            // First move: search with full window
+            result = search(
+                searcher,
+                &new_board,
+                search_depth,
+                ply.next(),
+                -beta,
+                -alpha,
+                true,
+            );
+            score = -result.score;
+        } else {
+            // Later moves: null window search first
+            result = search(
+                searcher,
+                &new_board,
+                search_depth,
+                ply.next(),
+                -alpha - Score::cp(1),
+                -alpha,
+                true,
+            );
+            score = -result.score;
+            
+            // Re-search with full window if fails high
+            if score > alpha && score < beta && !searcher.should_stop() {
+                result = search(
+                    searcher,
+                    &new_board,
+                    search_depth,
+                    ply.next(),
+                    -beta,
+                    -alpha,
+                    true,
+                );
+                score = -result.score;
+            }
+        }
 
-        // Re-search at full depth if reduced search beats alpha
+        // Re-search at full depth if LMR reduced search beats alpha
         if reduced && score > alpha && !searcher.should_stop() {
             result = search(
                 searcher,
                 &new_board,
-                depth - 1,
+                Depth::new((depth.raw() - 1 + extension).max(0)),
                 ply.next(),
                 -beta,
                 -alpha,

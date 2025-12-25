@@ -142,14 +142,22 @@ impl UciHandler {
             None => Board::default(),
         };
 
+        // Track position hashes for repetition detection
+        let mut history: Vec<u64> = Vec::with_capacity(moves.len() + 1);
+        history.push(self.board.get_hash());
+
         // Apply moves
         for move_str in moves {
             if let Some(m) = parse_move(&self.board, move_str) {
                 self.board = self.board.make_move_new(m);
+                history.push(self.board.get_hash());
             } else if self.debug {
                 eprintln!("Invalid move: {}", move_str);
             }
         }
+        
+        // Store history in searcher for repetition detection
+        self.searcher.set_position_with_history(self.board, history);
     }
 
     fn cmd_go(&mut self, params: SearchParams) {

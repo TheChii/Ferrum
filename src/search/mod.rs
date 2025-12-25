@@ -84,6 +84,8 @@ pub struct Searcher {
     start_time: Option<Instant>,
     /// NNUE Model (thread-safe reference)
     pub nnue: Option<nnue::Model>,
+    /// Position history for repetition detection (stores Zobrist hashes)
+    pub position_history: Vec<u64>,
 }
 
 impl Searcher {
@@ -101,6 +103,7 @@ impl Searcher {
             stop: false,
             start_time: None,
             nnue: None,
+            position_history: Vec::with_capacity(512),
         }
     }
 
@@ -116,9 +119,24 @@ impl Searcher {
         self.nnue = model;
     }
 
-    /// Set the position to search
+    /// Set the position to search with history for repetition detection
     pub fn set_position(&mut self, board: Board) {
+        self.position_history.clear();
+        self.position_history.push(board.get_hash());
         self.board = board;
+    }
+    
+    /// Set position with move history for repetition detection
+    pub fn set_position_with_history(&mut self, board: Board, history: Vec<u64>) {
+        self.position_history = history;
+        self.position_history.push(board.get_hash());
+        self.board = board;
+    }
+    
+    /// Check if position has repeated (for draw detection)
+    pub fn is_repetition(&self, hash: u64) -> bool {
+        // Count how many times this hash appears in history
+        self.position_history.iter().filter(|&&h| h == hash).count() >= 1
     }
 
     /// Get current statistics

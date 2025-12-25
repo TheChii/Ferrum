@@ -35,8 +35,20 @@ pub fn search(
     searcher.inc_nodes();
     searcher.update_seldepth(ply);
 
-    let orig_alpha = alpha;
     let hash = board.get_hash();
+
+    // === Repetition Detection ===
+    // Check for draw by repetition (position seen before in game history)
+    if ply.raw() > 0 && searcher.is_repetition(hash) {
+        return SearchResult {
+            best_move: None,
+            score: Score::draw(),
+            pv: Vec::new(),
+            stats: searcher.stats().clone(),
+        };
+    }
+
+    let orig_alpha = alpha;
     let mut tt_move: Option<Move> = None;
 
     // === TT Probe ===

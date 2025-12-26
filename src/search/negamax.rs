@@ -40,12 +40,29 @@ pub fn search(
 
     let hash = board.get_hash();
 
-    // === Repetition Detection ===
+    // === Repetition Detection with Contempt ===
     // Check for draw by repetition (position seen before in game history)
+    // Use contempt: avoid draws when winning, seek draws when losing
     if ply.raw() > 0 && searcher.is_repetition(hash) {
+        // Contempt factor: small penalty/bonus for draws based on expected score
+        // If alpha > 0 (we expect to be winning), penalize draws to avoid them
+        // If beta < 0 (we expect to be losing), reward draws to seek them
+        const CONTEMPT: i32 = 10; // Small contempt factor (centipawns)
+        
+        let draw_score = if alpha.raw() > CONTEMPT {
+            // We're winning - penalize draws to avoid repetition
+            Score::cp(-CONTEMPT)
+        } else if beta.raw() < -CONTEMPT {
+            // We're losing - reward draws to seek repetition  
+            Score::cp(CONTEMPT)
+        } else {
+            // Close to equal - treat as pure draw
+            Score::draw()
+        };
+        
         return SearchResult {
             best_move: None,
-            score: Score::draw(),
+            score: draw_score,
             pv: Vec::new(),
             stats: searcher.stats().clone(),
         };

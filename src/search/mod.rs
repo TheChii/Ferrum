@@ -228,8 +228,9 @@ impl Searcher {
             return true;
         }
         
-        // Check time periodically (every 2048 nodes for efficiency)
-        if self.stats.nodes & 2047 == 0 {
+        // Check time periodically (every 512 nodes for stricter timing)
+        // More frequent checks help prevent time losses in movetime mode
+        if self.stats.nodes & 511 == 0 {
             if self.time_manager.hard_limit_exceeded() {
                 return true;
             }
@@ -349,7 +350,8 @@ impl Searcher {
         // Initialize evaluator at root
         let local_nnue = self.nnue.clone();
         let mut root_evaluator = SearchEvaluator::new(local_nnue.as_ref(), &self.board);
-        
+        //let mut root_evaluator = SearchEvaluator::Hce;
+
         for depth in 1..=max_depth.raw() {
             // Check if we can start a new iteration
             if !self.can_start_new_iteration() {

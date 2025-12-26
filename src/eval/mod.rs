@@ -6,15 +6,17 @@ use crate::types::{Board, Score, Color, Piece, piece_value, Value};
 // use crate::uci::UciHandler;
 
 pub mod nnue;
+pub mod hce;
 
 // Re-export the evaluator for use in search
 pub use nnue::NnueEvaluator;
 use crate::types::Move;
 
-/// Evaluator wrapper that handles either NNUE (incremental) or Material (stateless)
+/// Evaluator wrapper that handles NNUE, HCE, or Material evaluation
 #[derive(Clone)]
 pub enum SearchEvaluator<'a> {
     Nnue(NnueEvaluator<'a>),
+    Hce,
     Material,
 }
 
@@ -30,6 +32,7 @@ impl<'a> SearchEvaluator<'a> {
     pub fn evaluate(&mut self, board: &Board) -> Score {
         match self {
             Self::Nnue(e) => e.evaluate(board.side_to_move()),
+            Self::Hce => hce::evaluate(board),
             Self::Material => material_eval_wrapper(board),
         }
     }
@@ -38,7 +41,8 @@ impl<'a> SearchEvaluator<'a> {
     pub fn update_move(&mut self, board: &Board, m: Move) -> bool {
         match self {
             Self::Nnue(e) => e.update_move(board, m),
-            Self::Material => true, // Material eval is stateless, update always "succeeds"
+            Self::Hce => true,     // HCE is stateless
+            Self::Material => true, // Material is stateless
         }
     }
 

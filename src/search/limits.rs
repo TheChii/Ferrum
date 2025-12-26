@@ -37,9 +37,12 @@ pub struct SearchLimits {
 }
 
 impl SearchLimits {
+    /// Default move overhead for timing safety (ms)
+    pub const DEFAULT_MOVE_OVERHEAD: u64 = 50;
+    
     pub fn new() -> Self {
         Self {
-            move_overhead: 10, // Default 10ms safety buffer
+            move_overhead: Self::DEFAULT_MOVE_OVERHEAD,
             ..Default::default()
         }
     }
@@ -47,7 +50,7 @@ impl SearchLimits {
     pub fn depth(depth: i32) -> Self {
         Self {
             depth: Some(Depth::new(depth)),
-            move_overhead: 10,
+            move_overhead: Self::DEFAULT_MOVE_OVERHEAD,
             ..Default::default()
         }
     }
@@ -63,7 +66,7 @@ impl SearchLimits {
             binc: params.binc,
             movestogo: params.movestogo,
             infinite: params.infinite,
-            move_overhead: 10, // Default, can be overridden via UCI
+            move_overhead: Self::DEFAULT_MOVE_OVERHEAD,
         }
     }
     
@@ -108,12 +111,18 @@ impl TimeManager {
 
         let move_overhead = limits.move_overhead;
 
-        // Fixed movetime
+        // Fixed movetime - use stricter limits to avoid time losses
+        // Soft limit: 85% of available time (stop after iteration)
+        // Hard limit: 95% of available time (absolute stop during search)
         if let Some(mt) = limits.movetime {
-            let effective = mt.saturating_sub(move_overhead);
+            let available = mt.saturating_sub(move_overhead);
+            // Use 85% for soft limit (when to stop starting new iterations)
+            let soft = (available * 85) / 100;
+            // Use 95% for hard limit (absolute cutoff mid-search)
+            let hard = (available * 95) / 100;
             return Self {
-                soft_limit: effective,
-                hard_limit: effective,
+                soft_limit: soft.max(1),
+                hard_limit: hard.max(1),
                 move_overhead,
                 infinite: false,
                 start_time: Some(Instant::now()),
@@ -252,14 +261,17 @@ mod tests {
     fn test_fixed_movetime() {
         let limits = SearchLimits {
             movetime: Some(1000),
-            move_overhead: 10,
+            move_overhead: 50,
             ..Default::default()
         };
         let tm = TimeManager::from_limits(&limits, Color::White);
         
         assert!(!tm.is_infinite());
-        assert_eq!(tm.soft_limit_ms(), 990); // 1000 - 10 overhead
-        assert_eq!(tm.hard_limit_ms(), 990);
+        // 1000 - 50 overhead = 950 available
+        // soft = 950 * 85% = 807
+        // hard = 950 * 95% = 902
+        assert_eq!(tm.soft_limit_ms(), 807);
+        assert_eq!(tm.hard_limit_ms(), 902);
     }
     
     #[test]

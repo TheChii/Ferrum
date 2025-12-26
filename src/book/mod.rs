@@ -8,7 +8,7 @@
 //! ```ignore
 //! use chessinrust::book::PolyglotBook;
 //!
-//! let book = PolyglotBook::load("Human.bin")?;
+//! let book = PolyglotBook::load("Openings.bin")?;
 //! let board = Board::default();
 //!
 //! // Get a weighted random move from the book

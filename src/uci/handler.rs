@@ -69,7 +69,7 @@ impl UciHandler {
         }
 
         // Attempt to load opening book (look next to executable first, then current dir)
-        let book_filename = "Human.bin";
+        let book_filename = "Openings.bin";
         let exe_dir_book = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|d| d.join(book_filename)));
@@ -175,7 +175,7 @@ impl UciHandler {
         self.send("option name Threads type spin default 1 min 1 max 64");
         self.send("option name MoveOverhead type spin default 10 min 0 max 5000");
         self.send("option name OwnBook type check default true");
-        self.send("option name BookPath type string default Human.bin");
+        self.send("option name BookPath type string default Openings.bin");
         
         self.send("uciok");
     }

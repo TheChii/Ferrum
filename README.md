@@ -64,7 +64,9 @@ Point your GUI to the compiled executable.
 - `go wtime <ms> btime <ms> ...`: Start searching.
 
 ## NNUE File
-The engine requires `network.nnue` to run. This file is **already included** in the main directory. If you wish to use a different network, replace this file or ensure it is in the working directory of the engine.
+The engine requires `network.nnue` to run. This file is **already included** in the main directory. 
+
+**IMPORTANT**: When running the engine (e.g., in a GUI), ensuring `network.nnue` is in the **same directory as the executable** or in the root directory if running via `cargo`. If you build the release version, copy `network.nnue` into `target/release/` alongside `chessinrust.exe`.
 
 ## License
 MIT

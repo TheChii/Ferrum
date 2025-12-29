@@ -1,33 +1,70 @@
+# Ferrum
 
+**Ferrum** is a high-performance, UCI-compatible chess engine written in Rust. It combines modern search techniques with the state-of-the-art NNUE (Efficiently Updatable Neural Network) evaluation function to play high-quality chess.
 
+## Key Features
 
+### 🧠 Evaluation
+- **NNUE Technology**: Uses a neural network for static position evaluation, providing deep understanding of positional play while maintaining high speed.
+- **Embedded Network**: The engine comes pre-packaged with a default network file (`network.nnue`) in the root directory, so it's ready to use out of the box.
+- **Module**: Powered by `ferrum-nnue`, a custom optimized implementation of the NNUE inference code.
 
+### 🔍 Search Algorithms
+- **Principal Variation Search (PVS)**: Efficient alpha-beta search variant.
+- **Iterative Deepening**: Progressive search depth for better time management.
+- **Lazy SMP**: Multithreaded search scaling to utilize modern multi-core processors.
+- **Transposition Table**: Caches positions to avoid re-searching identical subtrees.
+- **Quiescence Search**: Resolves tactical sequences to avoid the horizon effect.
 
+### ✂️ Pruning & Optimizations
+Ferrum employs aggressive pruning techniques to reduce the search space without sacrificing strength:
+- **Reverse Futility Pruning (RFP)**: Early cutoffs for positions with large static advantages.
+- **Null Move Pruning**: Dynamic reduction based on depth.
+- **Late Move Reductions (LMR)**: Variable reductions for quiet moves.
+- **History Pruning**: Prunes quiet moves that historically perform poorly.
+- **SEE Pruning**: Uses Static Exchange Evaluation to prune losing captures and quiet moves.
+- **Futility Pruning & Razoring**: Methods to prune branches at low depths.
+- **ProbCut**: Probabilistic cutoffs for likely winning lines.
+- **Move Ordering**: Optimizes search order using MVP-LVA, Killers, Countermoves, and History Heuristics.
 
+### ⚡ Move Generation
+- Built on **ferrum-movegen**, a fast localized move generation library designed specifically for this engine.
 
+## Getting Started
 
-# Chess Engine (Rust)
+### Prerequisites
+- [Rust Toolchain](https://www.rust-lang.org/tools/install) (stable)
 
-A chess engine built in Rust using:
-- [`chess`](https://crates.io/crates/chess) for move generation.
-- [`nnue`](https://github.com/analog-hors/nnue-rs) for evaluation.
+### Installation
+1. Clone the repository:
+   ```bash
+   git clone --recursive https://github.com/TheChii/Ferrum.git
+   cd Ferrum
+   ```
+2. Build in release mode:
+   ```bash
+   cargo build --release
+   ```
+   The executable will be located in `target/release/chessinrust.exe` (or `chessinrust` on Linux/Mac).
 
-## Setup
+### Usage
+Ferrum is a command-line engine that speaks the UCI (Universal Chess Interface) protocol. It is not designed to be played against directly in a terminal. Instead, install a chess GUI such as:
+- **Arena**
+- **CuteChess**
+- **BanksiaGUI**
+- **En Croissant**
 
-1. **Install Rust**: Ensure you have Rust installed.
-2. **Download NNUE Network**:
-   - The engine requires an NNUE network file to run its evaluation.
-   - Download a Stockfish NNUE file (e.g., from [Stockfish NNUE files](https://tests.stockfishchess.org/nns)).
-   - Rename the file to `network.nnue` and place it in the root of this project.
+Point your GUI to the compiled executable.
 
-## Running
+#### Common UCI Commands
+- `uci`: Initialize communication.
+- `isready`: Check readiness.
+- `ucinewgame`: Reset for a new game.
+- `position startpos moves ...`: Set board state.
+- `go wtime <ms> btime <ms> ...`: Start searching.
 
-To run the verification tests:
+## NNUE File
+The engine requires `network.nnue` to run. This file is **already included** in the main directory. If you wish to use a different network, replace this file or ensure it is in the working directory of the engine.
 
-```sh
-cargo run
-```
-
-This will:
-1. Generate moves for the starting position (checking `chess` crate).
-2. Attempt to load `network.nnue` (checking `nnue` crate).
+## License
+MIT

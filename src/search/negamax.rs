@@ -167,15 +167,22 @@ pub fn search<NT: NodeType>(
     // If we are way ahead, we can prune without searching
     // Distinct from standard Futility Pruning which prunes *moves*
     let mut static_eval = None;
+    let pawn_hash = board.pawn_hash();
+    let color = board.turn();
+    
     if !in_check && depth.raw() <= 7 {
         searcher.inc_eval_calls();
         let t_eval = Instant::now();
-        let eval = evaluator.evaluate(board);
+        let raw_eval = evaluator.evaluate(board);
         searcher.add_eval_time(t_eval.elapsed().as_nanos() as u64);
+        
+        // Apply correction history adjustment
+        let correction = searcher.correction.get(color, pawn_hash);
+        let eval = raw_eval + Score::cp(correction / 4);
         static_eval = Some(eval);
 
-        // RFP Margin: 75 * depth (tuneable)
-        let margin = Score::cp(75 * depth.raw() as i32);
+        // RFP Margin: 90 * depth (tuned)
+        let margin = Score::cp(90 * depth.raw() as i32);
         
         if eval - margin >= beta {
              return SearchResult {
@@ -362,6 +369,17 @@ pub fn search<NT: NodeType>(
         let is_quiet = !is_capture && !is_promotion;
         let gives_check = new_board.in_check();
 
+        // === Late Move Pruning (LMP) ===
+        // If we have searched enough quiet moves at low depth, stop searching the rest.
+        // This relies on move ordering to put good moves early.
+        if is_quiet && depth.raw() <= 7 && !in_check {
+            // Formula: LMS = 3 + depth^2 (e.g., d1=4, d2=7, d3=12...)
+            let lmp_count = (3 + depth.raw() * depth.raw()) as usize;
+            if quiets_count > lmp_count {
+                continue;
+            }
+        }
+
         // LMR: Late Move Reductions
         // Reduce depth for late quiet moves that aren't special
         let mut reduced = false;
@@ -412,7 +430,8 @@ pub fn search<NT: NodeType>(
         // At shallow depths, skip quiet moves if eval + margin is below alpha
         if let Some(se) = static_eval {
             if is_quiet && !gives_check && move_idx > 0 {
-                let margin = 150 * depth.raw();
+                // Tuned margin: 90 * depth (was 75 * depth)
+                let margin = 90 * depth.raw();
                 if se.raw() + margin < alpha.raw() {
                     // Track for history
                     if quiets_count < 64 {
@@ -539,6 +558,15 @@ pub fn search<NT: NodeType>(
         if is_quiet && quiets_count < 64 {
             searched_quiets[quiets_count] = m;
             quiets_count += 1;
+        }
+    }
+
+    // === Update Correction History ===
+    // Track difference between static eval and search score to correct future evals
+    if let Some(se) = static_eval {
+        if !best_score.is_mate_score() && !se.is_mate_score() {
+            let diff = best_score.raw() - se.raw();
+            searcher.correction.update(color, pawn_hash, depth.raw(), diff);
         }
     }
 

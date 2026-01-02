@@ -22,8 +22,10 @@ mod history;
 mod see;
 mod countermove;
 pub mod node_types;
+mod correction;
 
 pub use node_types::{NodeType, Root, OnPV, OffPV};
+pub use correction::CorrectionHistoryTable;
 
 pub use limits::{SearchLimits, TimeManager};
 pub use negamax::SearchResult;
@@ -120,6 +122,8 @@ pub struct Searcher {
     pub history: HistoryTable,
     /// Counter-move table (per-thread)
     pub countermoves: CounterMoveTable,
+    /// Correction history table (per-thread)
+    pub correction: CorrectionHistoryTable,
     /// Time manager for search limits
     time_manager: TimeManager,
     /// Search statistics
@@ -150,6 +154,7 @@ impl Searcher {
             killers: KillerTable::new(),
             history: HistoryTable::new(),
             countermoves: CounterMoveTable::new(),
+            correction: CorrectionHistoryTable::new(),
             time_manager: TimeManager::new(),
             stats: SearchStats::default(),
             best_move: None,
@@ -200,8 +205,11 @@ impl Searcher {
     }
     
     /// Check if position has repeated (for draw detection)
+    /// Check if position has repeated (for draw detection)
     pub fn is_repetition(&self, hash: u64) -> bool {
-        self.position_history.iter().filter(|&&h| h == hash).count() >= 1
+        // Iterate backwards to find recent repetitions (more likely)
+        // using any() to stop at first match
+        self.position_history.iter().rev().any(|&h| h == hash)
     }
 
     /// Get current statistics
@@ -276,6 +284,7 @@ impl Searcher {
             killers: KillerTable::new(),
             history: HistoryTable::new(),
             countermoves: CounterMoveTable::new(),
+            correction: CorrectionHistoryTable::new(),
             time_manager: self.time_manager.clone(),
             stats: SearchStats::default(),
             best_move: None,
